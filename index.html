@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MIU - Shopify SKU & Image Exporter Custom Plugin</title>
+    <title>Shopify SKU & Image Exporter</title>
     <style>
         * {
             margin: 0;
@@ -407,6 +407,7 @@
             products.forEach((product, productIndex) => {
                 console.log(`\n--- Product ${productIndex + 1}: ${product.title} ---`);
                 console.log('Product has variants:', product.variants?.length || 0);
+                console.log('Product has images:', product.images?.length || 0);
                 
                 if (!product.variants || product.variants.length === 0) {
                     console.log('No variants found for this product');
@@ -417,43 +418,69 @@
                     totalVariants++;
                     console.log(`  Variant ${variantIndex + 1}: ${variant.title}`);
                     console.log(`    SKU: "${variant.sku}" (empty: ${!variant.sku})`);
-                    console.log(`    Image ID: ${variant.image_id}`);
+                    console.log(`    Variant Image ID: ${variant.image_id}`);
                     
                     // Check if variant has SKU (including empty string check)
                     if (variant.sku && variant.sku.trim() !== '') {
                         variantsWithSKU++;
                         console.log(`    ✅ Has SKU: ${variant.sku}`);
                         
-                        let imageUrl = '';
+                        let imageUrls = [];
                         let imageSource = 'none';
                         
-                        // Check if variant has an assigned image
+                        // Method 1: Check if variant has a specific assigned image
                         if (variant.image_id) {
                             const variantImage = product.images.find(img => img.id === variant.image_id);
                             if (variantImage) {
-                                imageUrl = variantImage.src;
-                                imageSource = 'variant';
-                                variantsWithImages++;
-                                console.log(`    🖼️  Variant image: ${imageUrl.substring(0, 50)}...`);
+                                imageUrls.push(variantImage.src);
+                                imageSource = 'variant_specific';
+                                console.log(`    🖼️  Variant has specific image: ${variantImage.src.substring(0, 50)}...`);
                             }
                         }
                         
-                        // If no variant image, use the first product image
-                        if (!imageUrl && product.images.length > 0) {
-                            imageUrl = product.images[0].src;
-                            imageSource = 'product';
-                            console.log(`    📷 Using product image: ${imageUrl.substring(0, 50)}...`);
+                        // Method 2: If no specific variant image, include ALL product images
+                        if (imageUrls.length === 0 && product.images.length > 0) {
+                            imageUrls = product.images.map(img => img.src);
+                            imageSource = 'all_product_images';
+                            console.log(`    📷 Using all ${product.images.length} product images`);
                         }
-
-                        productData.push({
-                            product_title: product.title,
-                            variant_title: variant.title,
-                            sku: variant.sku,
-                            image_url: imageUrl,
-                            image_source: imageSource,
-                            price: variant.price,
-                            inventory_quantity: variant.inventory_quantity
-                        });
+                        
+                        // Method 3: For variants with specific images, also include option to get all images
+                        // Create entries for each image URL
+                        if (imageUrls.length > 0) {
+                            variantsWithImages++;
+                            
+                            // Option A: One row per image (detailed)
+                            imageUrls.forEach((imageUrl, imageIndex) => {
+                                productData.push({
+                                    product_title: product.title,
+                                    variant_title: variant.title,
+                                    sku: variant.sku,
+                                    image_url: imageUrl,
+                                    image_source: imageSource,
+                                    image_position: imageIndex + 1,
+                                    total_images: imageUrls.length,
+                                    price: variant.price,
+                                    inventory_quantity: variant.inventory_quantity
+                                });
+                            });
+                            
+                            console.log(`    📸 Added ${imageUrls.length} image(s) for this SKU`);
+                        } else {
+                            // No images available
+                            productData.push({
+                                product_title: product.title,
+                                variant_title: variant.title,
+                                sku: variant.sku,
+                                image_url: '',
+                                image_source: 'none',
+                                image_position: 0,
+                                total_images: 0,
+                                price: variant.price,
+                                inventory_quantity: variant.inventory_quantity
+                            });
+                            console.log(`    ❌ No images available for this SKU`);
+                        }
                     } else {
                         console.log(`    ❌ No SKU or empty SKU`);
                     }
@@ -464,7 +491,7 @@
             console.log(`Total variants: ${totalVariants}`);
             console.log(`Variants with SKUs: ${variantsWithSKU}`);
             console.log(`Variants with images: ${variantsWithImages}`);
-            console.log(`Final export data: ${productData.length} items`);
+            console.log(`Final export data: ${productData.length} rows (includes multiple images per SKU)`);
 
             displayResults();
         }
@@ -547,7 +574,17 @@
                 return;
             }
 
-            const csvHeaders = ['Product Title', 'Variant Title', 'SKU', 'Image URL', 'Price', 'Inventory Quantity'];
+            const csvHeaders = [
+                'Product Title', 
+                'Variant Title', 
+                'SKU', 
+                'Image URL', 
+                'Image Source', 
+                'Image Position', 
+                'Total Images', 
+                'Price', 
+                'Inventory Quantity'
+            ];
             const csvRows = [csvHeaders.join(',')];
 
             productData.forEach(item => {
@@ -556,6 +593,9 @@
                     `"${item.variant_title.replace(/"/g, '""')}"`,
                     `"${item.sku}"`,
                     `"${item.image_url}"`,
+                    `"${item.image_source}"`,
+                    `"${item.image_position}"`,
+                    `"${item.total_images}"`,
                     `"${item.price}"`,
                     `"${item.inventory_quantity || 0}"`
                 ];

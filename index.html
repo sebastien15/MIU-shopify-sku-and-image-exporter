@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shopify SKU & Image Exporter</title>
+    <title>MIU Shopify SKU & Image Exporter</title>
     <style>
         * {
             margin: 0;
@@ -291,6 +291,24 @@
             try {
                 const cleanStoreUrl = storeUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
                 let allProducts = [];
+                let allCollections = {};
+                
+                // First, fetch collections to map collection IDs to names
+                try {
+                    productDataDiv.innerHTML = '<div class="loading">Fetching collections from Shopify...</div>';
+                    const collectionsUrl = `https://${cleanStoreUrl}/admin/api/2023-10/collections.json?limit=250`;
+                    const collectionsResponse = await makeApiRequest(collectionsUrl, accessToken);
+                    const collectionsData = await collectionsResponse.json();
+                    
+                    if (collectionsData.collections) {
+                        collectionsData.collections.forEach(collection => {
+                            allCollections[collection.id] = collection.title;
+                        });
+                        console.log('Fetched collections:', Object.keys(allCollections).length);
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch collections:', error.message);
+                }
                 
                 if (fetchAll) {
                     // Fetch all products using pagination
@@ -340,13 +358,14 @@
                 
                 // DEBUG: Log the raw API response
                 console.log('Total products fetched:', allProducts.length);
+                console.log('Collections mapped:', Object.keys(allCollections).length);
                 
                 if (allProducts.length > 0) {
                     console.log('First product structure:', allProducts[0]);
                     console.log('First product variants:', allProducts[0].variants);
                 }
                 
-                processProducts(allProducts);
+                processProducts(allProducts, allCollections);
 
             } catch (error) {
                 productDataDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
@@ -387,12 +406,13 @@
             }
         }
 
-        function processProducts(products) {
+        function processProducts(products, collections = {}) {
             productData = [];
             
             // DEBUG: Log processing details
             console.log('=== PROCESSING PRODUCTS ===');
             console.log('Products to process:', products?.length || 0);
+            console.log('Collections available:', Object.keys(collections).length);
             
             if (!products || products.length === 0) {
                 console.log('No products found in API response');
@@ -408,6 +428,19 @@
                 console.log(`\n--- Product ${productIndex + 1}: ${product.title} ---`);
                 console.log('Product has variants:', product.variants?.length || 0);
                 console.log('Product has images:', product.images?.length || 0);
+                console.log('Product type:', product.product_type || 'N/A');
+                console.log('Product tags:', product.tags || 'N/A');
+                
+                // Get collections for this product
+                const productCollections = [];
+                if (product.collection_ids && product.collection_ids.length > 0) {
+                    product.collection_ids.forEach(collectionId => {
+                        if (collections[collectionId]) {
+                            productCollections.push(collections[collectionId]);
+                        }
+                    });
+                }
+                console.log('Product collections:', productCollections.join(', ') || 'None');
                 
                 if (!product.variants || product.variants.length === 0) {
                     console.log('No variants found for this product');
@@ -456,6 +489,10 @@
                                     product_title: product.title,
                                     variant_title: variant.title,
                                     sku: variant.sku,
+                                    product_type: product.product_type || '',
+                                    category: product.product_type || '', // Using product_type as category
+                                    collections: productCollections.join(' | '), // Multiple collections separated by |
+                                    tags: product.tags || '',
                                     image_url: imageUrl,
                                     image_source: imageSource,
                                     image_position: imageIndex + 1,
@@ -472,6 +509,10 @@
                                 product_title: product.title,
                                 variant_title: variant.title,
                                 sku: variant.sku,
+                                product_type: product.product_type || '',
+                                category: product.product_type || '',
+                                collections: productCollections.join(' | '),
+                                tags: product.tags || '',
                                 image_url: '',
                                 image_source: 'none',
                                 image_position: 0,
@@ -578,6 +619,9 @@
                 'Product Title', 
                 'Variant Title', 
                 'SKU', 
+                'Category',
+                'Collections',
+                'Tags',
                 'Image URL', 
                 'Image Source', 
                 'Image Position', 
@@ -592,6 +636,9 @@
                     `"${item.product_title.replace(/"/g, '""')}"`,
                     `"${item.variant_title.replace(/"/g, '""')}"`,
                     `"${item.sku}"`,
+                    `"${item.category}"`,
+                    `"${item.collections}"`,
+                    `"${item.tags}"`,
                     `"${item.image_url}"`,
                     `"${item.image_source}"`,
                     `"${item.image_position}"`,
